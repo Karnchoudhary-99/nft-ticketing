@@ -1,0 +1,12 @@
+# Foundry
+out/
+cache/
+broadcast/
+# Env
+.env
+# Editors
+.vscode/
+.idea/
+*.swp
+# OS
+.DS_Store
