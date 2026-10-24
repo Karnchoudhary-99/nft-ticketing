@@ -176,4 +176,38 @@ contract NftTicketingTest is Test {
         vm.expectRevert(NftTicketing.ResaleDisabled.selector);
         ticketing.listForResale(tokenId, PRICE);
     }
+
+    // --- Redemption ---
+
+    function testRedeemOnceByChecker() public {
+        uint256 id = _eventId();
+        uint256 tokenId = _buy(alice, id);
+        ticketing.setChecker(id, carol, true);
+        vm.prank(carol);
+        ticketing.redeem(tokenId);
+        assertTrue(ticketing.redeemed(tokenId));
+        vm.prank(carol);
+        vm.expectRevert(NftTicketing.TicketAlreadyRedeemed.selector);
+        ticketing.redeem(tokenId);
+    }
+
+    function testRedeemRejectsNonChecker() public {
+        uint256 id = _eventId();
+        uint256 tokenId = _buy(alice, id);
+        vm.prank(bob);
+        vm.expectRevert(NftTicketing.NotChecker.selector);
+        ticketing.redeem(tokenId);
+    }
+
+    function testRedeemedTicketCannotTransferOrList() public {
+        uint256 id = _eventId();
+        uint256 tokenId = _buy(alice, id);
+        ticketing.redeem(tokenId); // organizer is a checker by default
+        vm.prank(alice);
+        vm.expectRevert(NftTicketing.TicketRedeemed.selector);
+        ticketing.transferFrom(alice, bob, tokenId);
+        vm.prank(alice);
+        vm.expectRevert(NftTicketing.TicketRedeemed.selector);
+        ticketing.listForResale(tokenId, CAP);
+    }
 }
