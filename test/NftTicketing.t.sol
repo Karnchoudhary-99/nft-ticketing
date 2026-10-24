@@ -88,4 +88,42 @@ contract NftTicketingTest is Test {
         vm.expectRevert(NftTicketing.NotApprovedOrOwner.selector);
         ticketing.transferFrom(alice, bob, tokenId);
     }
+
+    // --- Transfer controls ---
+
+    function testTransfersDisabledBlocksTransfer() public {
+        uint256 id = _eventId();
+        uint256 tokenId = _buy(alice, id);
+        ticketing.setTransfersEnabled(id, false);
+        vm.prank(alice);
+        vm.expectRevert(NftTicketing.TransfersDisabled.selector);
+        ticketing.transferFrom(alice, bob, tokenId);
+        ticketing.setTransfersEnabled(id, true);
+        vm.prank(alice);
+        ticketing.transferFrom(alice, bob, tokenId);
+        assertEq(ticketing.ownerOf(tokenId), bob);
+    }
+
+    function testAllowlistBlocksUnlistedRecipient() public {
+        uint256 id = _eventId();
+        uint256 tokenId = _buy(alice, id);
+        ticketing.setAllowlistEnabled(id, true);
+        vm.prank(alice);
+        vm.expectRevert(NftTicketing.RecipientNotAllowlisted.selector);
+        ticketing.transferFrom(alice, bob, tokenId);
+        ticketing.setAllowlisted(id, bob, true);
+        vm.prank(alice);
+        ticketing.transferFrom(alice, bob, tokenId);
+        assertEq(ticketing.ownerOf(tokenId), bob);
+    }
+
+    function testOnlyOrganizerCanToggleControls() public {
+        uint256 id = _eventId();
+        vm.prank(alice);
+        vm.expectRevert(NftTicketing.NotOrganizer.selector);
+        ticketing.setTransfersEnabled(id, false);
+        vm.prank(alice);
+        vm.expectRevert(NftTicketing.NotOrganizer.selector);
+        ticketing.setAllowlisted(id, bob, true);
+    }
 }
