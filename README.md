@@ -36,14 +36,18 @@ Key entry points:
 | `setTransfersEnabled / setAllowlistEnabled / setAllowlisted` | organizer | Pause transfers, gate recipients to an allowlist |
 | `setChecker(eventId, checker, allowed)` | organizer | Appoint door checkers (organizer is a checker by default) |
 | `setResaleCap(eventId, cap)` | organizer | Change the resale ceiling (0 disables resale) |
+| `withdrawProceeds(eventId)` | organizer | Withdraws accumulated primary-sale ETH for the event (resale ETH goes straight to the seller, never through the contract) |
 | `listForResale(tokenId, price)` | ticket owner | Lists at a price at or under the cap; redeemed tickets cannot list |
-| `buyResale(tokenId)` (payable) | buyer | Buys a listed ticket for exactly the listing price; seller is paid on-chain. This is the organizer-approved resale channel, so it works even when direct transfers are paused |
+| `buyResale(tokenId)` (payable) | buyer | Buys a listed ticket for exactly the listing price; seller is paid on-chain. This is the organizer-approved resale channel, so it works even when direct transfers are paused. The cap is re-checked at purchase time, so a listing created before a cap cut cannot sell above the new cap until it is cancelled and relisted |
 | `redeem(tokenId)` | checker | Marks a ticket used exactly once; a redeemed ticket can never transfer or list again |
 
 Anti-fraud properties: a ticket is minted only by paying the contract,
 its owner is on-chain, redemption is single-use and checker-gated, and
 resale prices are capped by the contract itself — not by marketplace
-goodwill.
+goodwill. Primary-sale revenue is not locked in the contract: the
+organizer withdraws it per event with `withdrawProceeds`, and the
+contract's balance always equals the sum of unwithdrawn proceeds
+(verified by the invariant suite).
 
 ## Local demo on Anvil
 
