@@ -58,6 +58,7 @@ contract NftTicketing {
     error TransferFailed(address to, uint256 amount);
     error CannotBuyOwnTicket();
     error ReentrantCall();
+    error NoProceeds();
 
     // ------------------------------------------------------------------------
     // Events
@@ -83,6 +84,7 @@ contract NftTicketing {
     event ResaleCancelled(uint256 indexed tokenId, address indexed seller);
     event Resold(uint256 indexed tokenId, address indexed seller, address indexed buyer, uint256 price);
     event Redeemed(uint256 indexed tokenId, uint256 indexed eventId, address indexed checker);
+    event ProceedsWithdrawn(uint256 indexed eventId, address indexed organizer, uint256 amount);
 
     // ------------------------------------------------------------------------
     // State
@@ -104,6 +106,7 @@ contract NftTicketing {
     mapping(uint256 => uint256) public resalePrice; // 0 = not listed
     mapping(uint256 => mapping(address => bool)) public allowlist;
     mapping(uint256 => mapping(address => bool)) public checkers;
+    mapping(uint256 => uint256) public eventProceeds; // primary-sale ETH per event, awaiting organizer withdrawal
 
     uint256 private _locked;
 
@@ -257,6 +260,7 @@ contract NftTicketing {
         if (ev.minted >= ev.maxSupply) revert SoldOut();
         if (msg.value != ev.price) revert WrongPayment(ev.price, msg.value);
         ev.minted += 1;
+        eventProceeds[eventId] += msg.value;
         tokenId = _mint(msg.sender, eventId);
         emit TicketMinted(tokenId, eventId, msg.sender);
     }
@@ -298,6 +302,19 @@ contract NftTicketing {
         emit ResaleCapSet(eventId, cap);
     }
 
+    /// @notice Withdraw accumulated primary-sale proceeds for an event.
+    /// @dev Resale payments go straight to the seller, so the contract only
+    ///      ever holds primary-sale ETH; that is exactly what this pays out.
+    ///      Without this, ticket revenue would be locked in the contract.
+    function withdrawProceeds(uint256 eventId) external onlyOrganizer(eventId) nonReentrant {
+        uint256 amount = eventProceeds[eventId];
+        if (amount == 0) revert NoProceeds();
+        eventProceeds[eventId] = 0;
+        (bool ok,) = events[eventId].organizer.call{value: amount}("");
+        if (!ok) revert TransferFailed(events[eventId].organizer, amount);
+        emit ProceedsWithdrawn(eventId, events[eventId].organizer, amount);
+    }
+
     // ------------------------------------------------------------------------
     // Resale (price cap enforced on-chain)
     // ------------------------------------------------------------------------
@@ -325,6 +342,11 @@ contract NftTicketing {
     function buyResale(uint256 tokenId) external payable nonReentrant {
         uint256 price = resalePrice[tokenId];
         if (price == 0) revert NotListed();
+        // Re-check the cap at purchase time: the organizer may have lowered
+        // it after this listing was created, and a stale listing must not be
+        // able to sell above the current cap (cap 0 = resale now disabled).
+        uint256 cap = events[tokenEvent[tokenId]].resaleCap;
+        if (price > cap) revert ResalePriceAboveCap(cap, price);
         if (redeemed[tokenId]) revert TicketRedeemed();
         if (msg.value != price) revert WrongPayment(price, msg.value);
         address seller = ownerOf(tokenId);
