@@ -11,7 +11,8 @@ contract dependencies (a minimal ERC-721 core lives in the contract).
 - [x] Event + ticket contracts (mint, pricing, supply caps)
 - [x] Transfer controls (organizer allowlist, transfer pause, resale price cap)
 - [x] Redemption (single-use check-in, anti-replay)
-- [ ] Invariant fuzz tests + gas report, then self-review checklist, then public
+- [x] Invariant fuzz tests + gas report (docs/gas-report.md)
+- [ ] Self-review checklist, then public
 
 ## Quick start
 
@@ -80,10 +81,15 @@ cast send <TICKETING> "redeem(uint256)" 1 \
 
 ## Tests
 
-16 Foundry tests cover events, exact-price sale, sold-out, ERC-721
-transfers and approvals, transfer pause, allowlist, capped resale
-(including the disabled-cap case), and single-use redemption.
-Gas baseline: `.gas-snapshot`.
+26 Foundry tests: 21 unit tests cover events, exact-price sale,
+sold-out, ERC-721 transfers and approvals, transfer pause, allowlist,
+capped resale (including the disabled-cap case and the stale-listing
+cap re-check), organizer proceeds withdrawal, and single-use
+redemption; plus a 5-invariant fuzz suite (256 runs, depth 100,
+25,600 calls per invariant, 0 reverts) proving minted ≤ supply,
+token accounting, contract-balance == unwithdrawn proceeds, listings
+within cap, and tokens belonging to real events.
+Gas baseline: `.gas-snapshot`; full report in `docs/gas-report.md`.
 
 ## License
 
