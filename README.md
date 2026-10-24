@@ -12,7 +12,7 @@ contract dependencies (a minimal ERC-721 core lives in the contract).
 - [x] Transfer controls (organizer allowlist, transfer pause, resale price cap)
 - [x] Redemption (single-use check-in, anti-replay)
 - [x] Invariant fuzz tests + gas report (docs/gas-report.md)
-- [ ] Self-review checklist, then public
+- [x] Self-review checklist passed, then public
 
 ## Quick start
 
