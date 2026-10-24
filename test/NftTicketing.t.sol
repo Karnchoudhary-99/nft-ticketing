@@ -126,4 +126,54 @@ contract NftTicketingTest is Test {
         vm.expectRevert(NftTicketing.NotOrganizer.selector);
         ticketing.setAllowlisted(id, bob, true);
     }
+
+    // --- Resale with price cap ---
+
+    function testResaleAboveCapReverts() public {
+        uint256 id = _eventId();
+        uint256 tokenId = _buy(alice, id);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(NftTicketing.ResalePriceAboveCap.selector, CAP, CAP + 0.01 ether));
+        ticketing.listForResale(tokenId, CAP + 0.01 ether);
+    }
+
+    function testResaleMovesTicketAndPaysSeller() public {
+        uint256 id = _eventId();
+        uint256 tokenId = _buy(alice, id);
+        // Even with direct transfers paused, the capped listing channel works.
+        ticketing.setTransfersEnabled(id, false);
+        vm.prank(alice);
+        ticketing.listForResale(tokenId, CAP);
+        uint256 before = alice.balance;
+        vm.deal(bob, 10 ether);
+        vm.prank(bob);
+        ticketing.buyResale{value: CAP}(tokenId);
+        assertEq(ticketing.ownerOf(tokenId), bob);
+        assertEq(ticketing.resalePrice(tokenId), 0);
+        assertEq(alice.balance, before + CAP);
+    }
+
+    function testResaleCancelAndUnlistedBuyRevert() public {
+        uint256 id = _eventId();
+        uint256 tokenId = _buy(alice, id);
+        vm.prank(alice);
+        ticketing.listForResale(tokenId, CAP);
+        vm.prank(alice);
+        ticketing.cancelResale(tokenId);
+        assertEq(ticketing.resalePrice(tokenId), 0);
+        vm.deal(bob, 10 ether);
+        vm.prank(bob);
+        vm.expectRevert(NftTicketing.NotListed.selector);
+        ticketing.buyResale{value: CAP}(tokenId);
+    }
+
+    function testResaleDisabledWhenCapIsZero() public {
+        uint256 id = ticketing.createEvent(
+            "No Resale", "Hall", block.timestamp + 30 days, PRICE, 10, 0, ""
+        );
+        uint256 tokenId = _buy(alice, id);
+        vm.prank(alice);
+        vm.expectRevert(NftTicketing.ResaleDisabled.selector);
+        ticketing.listForResale(tokenId, PRICE);
+    }
 }
