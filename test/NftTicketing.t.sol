@@ -13,6 +13,10 @@ contract NftTicketingTest is Test {
     uint256 public constant PRICE = 0.1 ether;
     uint256 public constant CAP = 0.15 ether;
 
+    // The test contract is the organizer, so it must be able to receive
+    // withdrawn proceeds.
+    receive() external payable {}
+
     function setUp() public {
         ticketing = new NftTicketing();
     }
@@ -197,6 +201,92 @@ contract NftTicketingTest is Test {
         vm.prank(bob);
         vm.expectRevert(NftTicketing.NotChecker.selector);
         ticketing.redeem(tokenId);
+    }
+
+    // --- Organizer proceeds withdrawal ---
+
+    function testWithdrawPaysOutPrimarySaleProceeds() public {
+        uint256 id = _eventId();
+        _buy(alice, id);
+        _buy(bob, id);
+        assertEq(ticketing.eventProceeds(id), 2 * PRICE);
+        assertEq(address(ticketing).balance, 2 * PRICE);
+        uint256 before = address(this).balance;
+        ticketing.withdrawProceeds(id);
+        assertEq(address(this).balance, before + 2 * PRICE);
+        assertEq(ticketing.eventProceeds(id), 0);
+        assertEq(address(ticketing).balance, 0);
+    }
+
+    function testWithdrawIsPerEventAndRejectsEmptyAndStranger() public {
+        uint256 id1 = _eventId();
+        uint256 id2 = ticketing.createEvent(
+            "Second Night", "Hall", block.timestamp + 30 days, PRICE, 5, CAP, ""
+        );
+        _buy(alice, id1);
+        ticketing.withdrawProceeds(id1);
+        vm.expectRevert(NftTicketing.NoProceeds.selector);
+        ticketing.withdrawProceeds(id1);
+        vm.expectRevert(NftTicketing.NoProceeds.selector);
+        ticketing.withdrawProceeds(id2);
+        _buy(alice, id2);
+        vm.prank(alice);
+        vm.expectRevert(NftTicketing.NotOrganizer.selector);
+        ticketing.withdrawProceeds(id2);
+        ticketing.withdrawProceeds(id2);
+        assertEq(ticketing.eventProceeds(id2), 0);
+    }
+
+    function testWithdrawDoesNotTouchResaleProceeds() public {
+        // Resale ETH goes straight to the seller, never through the contract.
+        uint256 id = _eventId();
+        uint256 tokenId = _buy(alice, id);
+        vm.prank(alice);
+        ticketing.listForResale(tokenId, CAP);
+        vm.deal(bob, 10 ether);
+        vm.prank(bob);
+        ticketing.buyResale{value: CAP}(tokenId);
+        assertEq(ticketing.eventProceeds(id), PRICE);
+        assertEq(address(ticketing).balance, PRICE);
+    }
+
+    // --- Resale cap re-check at purchase time ---
+
+    function testLoweredCapBlocksStaleListingUntilRelisted() public {
+        uint256 id = _eventId();
+        uint256 tokenId = _buy(alice, id);
+        vm.prank(alice);
+        ticketing.listForResale(tokenId, CAP);
+        ticketing.setResaleCap(id, PRICE); // below the existing listing
+        vm.deal(bob, 10 ether);
+        vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(NftTicketing.ResalePriceAboveCap.selector, PRICE, CAP)
+        );
+        ticketing.buyResale{value: CAP}(tokenId);
+        // Seller cancels and relists at the new cap; the sale then succeeds.
+        vm.prank(alice);
+        ticketing.cancelResale(tokenId);
+        vm.prank(alice);
+        ticketing.listForResale(tokenId, PRICE);
+        vm.prank(bob);
+        ticketing.buyResale{value: PRICE}(tokenId);
+        assertEq(ticketing.ownerOf(tokenId), bob);
+    }
+
+    function testRedeemedListedTicketCannotSellButCanCancel() public {
+        uint256 id = _eventId();
+        uint256 tokenId = _buy(alice, id);
+        vm.prank(alice);
+        ticketing.listForResale(tokenId, CAP);
+        ticketing.redeem(tokenId);
+        vm.deal(bob, 10 ether);
+        vm.prank(bob);
+        vm.expectRevert(NftTicketing.TicketRedeemed.selector);
+        ticketing.buyResale{value: CAP}(tokenId);
+        vm.prank(alice);
+        ticketing.cancelResale(tokenId);
+        assertEq(ticketing.resalePrice(tokenId), 0);
     }
 
     function testRedeemedTicketCannotTransferOrList() public {
